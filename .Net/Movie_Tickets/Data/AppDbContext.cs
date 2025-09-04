@@ -170,6 +170,7 @@ public class AppDbContext : DbContext
     public string? Language { get; set; }
     public string? Genre { get; set; }
     public DateTime? ReleaseDate { get; set; }
+    public string? ImageUrl { get; set; }
     public List<Show> Shows { get; set; } = new();
 }
 
