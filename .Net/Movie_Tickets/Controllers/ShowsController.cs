@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Movie_Tickets.Data;
 using Movie_Tickets.Dtos;
+using Movie_Tickets.Common;
 
 namespace Movie_Tickets.Controllers;
 
@@ -16,11 +17,28 @@ public class ShowsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Show>> Create([FromBody] CreateShowDto dto)
     {
-        var movieExists = await _db.Movies.AnyAsync(m => m.Id == dto.MovieId);
-        if (!movieExists) return NotFound($"Movie {dto.MovieId} not found");
+        if (dto.Price < 0) return BadRequest(new ApiResponse<object>(false, null, "Price cannot be negative"));
+
+        var movie = await _db.Movies.AsNoTracking().FirstOrDefaultAsync(m => m.Id == dto.MovieId);
+        if (movie is null) return NotFound(new ApiResponse<object>(false, null, $"Movie {dto.MovieId} not found"));
 
         var screenExists = await _db.Screens.AnyAsync(s => s.Id == dto.ScreenId);
         if (!screenExists) return NotFound($"Screen {dto.ScreenId} not found");
+
+        if (dto.StartsAtUtc <= DateTime.UtcNow)
+            return BadRequest(new ApiResponse<object>(false, null, "Start time must be in the future"));
+
+        var showStart = DateTime.SpecifyKind(dto.StartsAtUtc, DateTimeKind.Utc);
+        var showEnd = showStart.AddMinutes(movie.DurationMinutes);
+
+        // prevent overlaps on the same screen
+        var overlap = await _db.Shows
+            .Where(s => s.ScreenId == dto.ScreenId)
+            .Join(_db.Movies, s => s.MovieId, m => m.Id, (s, m) => new { s.StartsAtUtc, Duration = m.DurationMinutes })
+            .AnyAsync(x => ShowTimeHelper.Overlaps(showStart, showEnd, x.StartsAtUtc, x.StartsAtUtc.AddMinutes(x.Duration)));
+
+        if (overlap)
+            return Conflict(new ApiResponse<object>(false, null, "Overlapping show on this screen"));
 
         var show = new Show
         {

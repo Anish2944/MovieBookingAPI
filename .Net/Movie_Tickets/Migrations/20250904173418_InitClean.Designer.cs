@@ -12,8 +12,8 @@ using Movie_Tickets.Data;
 namespace Movie_Tickets.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20250831152407_SyncUserTable")]
-    partial class SyncUserTable
+    [Migration("20250904173418_InitClean")]
+    partial class InitClean
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -34,7 +34,9 @@ namespace Movie_Tickets.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
 
                     b.Property<int>("ShowId")
                         .HasColumnType("int");
@@ -48,13 +50,14 @@ namespace Movie_Tickets.Migrations
                     b.Property<decimal>("TotalAmount")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<string>("UserEmail")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ShowId");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("Bookings");
                 });
@@ -70,6 +73,9 @@ namespace Movie_Tickets.Migrations
                     b.HasKey("BookingId", "SeatId");
 
                     b.HasIndex("SeatId");
+
+                    b.HasIndex("BookingId", "SeatId")
+                        .IsUnique();
 
                     b.ToTable("BookingSeats");
                 });
@@ -173,14 +179,15 @@ namespace Movie_Tickets.Migrations
 
                     b.Property<string>("Row")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("ScreenId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ScreenId");
+                    b.HasIndex("ScreenId", "Row", "Number")
+                        .IsUnique();
 
                     b.ToTable("Seats");
 
@@ -197,7 +204,7 @@ namespace Movie_Tickets.Migrations
                         {
                             Id = 2,
                             IsDisabled = false,
-                            Number = 1,
+                            Number = 2,
                             Row = "A",
                             ScreenId = 1
                         });
@@ -225,6 +232,8 @@ namespace Movie_Tickets.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SeatId");
 
                     b.HasIndex("ShowId", "SeatId")
                         .IsUnique();
@@ -256,7 +265,8 @@ namespace Movie_Tickets.Migrations
 
                     b.HasIndex("MovieId");
 
-                    b.HasIndex("ScreenId");
+                    b.HasIndex("ScreenId", "StartsAtUtc")
+                        .IsUnique();
 
                     b.ToTable("Shows");
 
@@ -275,7 +285,7 @@ namespace Movie_Tickets.Migrations
                             MovieId = 2,
                             Price = 0m,
                             ScreenId = 1,
-                            StartsAtUtc = new DateTime(2025, 8, 30, 18, 0, 0, 0, DateTimeKind.Unspecified)
+                            StartsAtUtc = new DateTime(2025, 8, 30, 21, 0, 0, 0, DateTimeKind.Unspecified)
                         });
                 });
 
@@ -318,7 +328,7 @@ namespace Movie_Tickets.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -335,6 +345,9 @@ namespace Movie_Tickets.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Email")
+                        .IsUnique();
+
                     b.ToTable("Users");
                 });
 
@@ -343,10 +356,18 @@ namespace Movie_Tickets.Migrations
                     b.HasOne("Movie_Tickets.Data.Show", "Show")
                         .WithMany("Bookings")
                         .HasForeignKey("ShowId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Movie_Tickets.Data.User", "User")
+                        .WithMany("Bookings")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Show");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Movie_Tickets.Data.BookingSeat", b =>
@@ -390,6 +411,25 @@ namespace Movie_Tickets.Migrations
                     b.Navigation("Screen");
                 });
 
+            modelBuilder.Entity("Movie_Tickets.Data.SeatLock", b =>
+                {
+                    b.HasOne("Movie_Tickets.Data.Seat", "Seat")
+                        .WithMany("SeatLocks")
+                        .HasForeignKey("SeatId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Movie_Tickets.Data.Show", "Show")
+                        .WithMany("SeatLocks")
+                        .HasForeignKey("ShowId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Seat");
+
+                    b.Navigation("Show");
+                });
+
             modelBuilder.Entity("Movie_Tickets.Data.Show", b =>
                 {
                     b.HasOne("Movie_Tickets.Data.Movie", "Movie")
@@ -429,16 +469,25 @@ namespace Movie_Tickets.Migrations
             modelBuilder.Entity("Movie_Tickets.Data.Seat", b =>
                 {
                     b.Navigation("BookingSeats");
+
+                    b.Navigation("SeatLocks");
                 });
 
             modelBuilder.Entity("Movie_Tickets.Data.Show", b =>
                 {
                     b.Navigation("Bookings");
+
+                    b.Navigation("SeatLocks");
                 });
 
             modelBuilder.Entity("Movie_Tickets.Data.Theater", b =>
                 {
                     b.Navigation("Screens");
+                });
+
+            modelBuilder.Entity("Movie_Tickets.Data.User", b =>
+                {
+                    b.Navigation("Bookings");
                 });
 #pragma warning restore 612, 618
         }

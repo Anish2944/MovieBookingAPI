@@ -56,13 +56,41 @@ public class AppDbContext : DbContext
             .HasOne(bs => bs.Booking)
             .WithMany(bk => bk.BookingSeats)
             .HasForeignKey(bs => bs.BookingId)
-            .OnDelete(DeleteBehavior.Cascade); // ✅ keep cascade here
+            .OnDelete(DeleteBehavior.Cascade); // keep cascade
 
         b.Entity<BookingSeat>()
             .HasOne(bs => bs.Seat)
             .WithMany(s => s.BookingSeats)
             .HasForeignKey(bs => bs.SeatId)
-            .OnDelete(DeleteBehavior.Restrict); // ✅ prevent multiple cascade paths
+            .OnDelete(DeleteBehavior.Restrict); // prevent multiple cascade paths
+
+        // Booking → Show (many-to-one, explicit Restrict to avoid cascade paths)
+        b.Entity<Booking>()
+            .HasOne(bk => bk.Show)
+            .WithMany(sh => sh.Bookings)
+            .HasForeignKey(bk => bk.ShowId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Booking → User (many-to-one, Restrict delete)
+        b.Entity<Booking>()
+            .HasOne(bk => bk.User)
+            .WithMany(u => u.Bookings) // now bi-directional
+            .HasForeignKey(bk => bk.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // SeatLock → Show (many-to-one, Restrict delete)
+        b.Entity<SeatLock>()
+            .HasOne(sl => sl.Show)
+            .WithMany(sh => sh.SeatLocks)
+            .HasForeignKey(sl => sl.ShowId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // SeatLock → Seat (many-to-one, Restrict delete)
+        b.Entity<SeatLock>()
+            .HasOne(sl => sl.Seat)
+            .WithMany(s => s.SeatLocks) // now bi-directional
+            .HasForeignKey(sl => sl.SeatId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // SeatLock unique constraint (ShowId + SeatId)
         b.Entity<SeatLock>()
@@ -74,7 +102,7 @@ public class AppDbContext : DbContext
             .Property(bk => bk.Status)
             .HasDefaultValue("Pending");
 
-        // ✅ Fix decimal precision for SQL Server
+        // Decimal precision for SQL Server
         b.Entity<Show>()
             .Property(s => s.Price)
             .HasColumnType("decimal(18,2)");
@@ -83,10 +111,15 @@ public class AppDbContext : DbContext
             .Property(b => b.TotalAmount)
             .HasColumnType("decimal(18,2)");
 
+        b.Entity<Booking>()
+            .Property(b => b.CreatedAtUtc)
+            .HasDefaultValueSql("GETUTCDATE()");
+
+        // Seed data
         b.Entity<Movie>().HasData(
-        new Movie { Id = 1, Title = "Inception", DurationMinutes = 148 },
-        new Movie { Id = 2, Title = "The Dark Knight", DurationMinutes = 152 }
-    );
+            new Movie { Id = 1, Title = "Inception", DurationMinutes = 148 },
+            new Movie { Id = 2, Title = "The Dark Knight", DurationMinutes = 152 }
+        );
 
         b.Entity<Theater>().HasData(
             new Theater { Id = 1, Name = "IMAX Central" }
@@ -98,18 +131,36 @@ public class AppDbContext : DbContext
 
         b.Entity<Seat>().HasData(
             new Seat { Id = 1, Number = 1, ScreenId = 1 },
-            new Seat { Id = 2, Number = 1, ScreenId = 1 }
+            new Seat { Id = 2, Number = 2, ScreenId = 1 }
         );
 
         b.Entity<Show>().HasData(
             new Show { Id = 1, MovieId = 1, ScreenId = 1, StartsAtUtc = new DateTime(2025, 08, 30, 18, 00, 00) },
-            new Show { Id = 2, MovieId = 2, ScreenId = 1, StartsAtUtc = new DateTime(2025, 08, 30, 18, 00, 00) }
+            new Show { Id = 2, MovieId = 2, ScreenId = 1, StartsAtUtc = new DateTime(2025, 08, 30, 21, 00, 00) } // later show
         );
+
+
+        // User Email unique constraint
+        b.Entity<User>()
+            .HasIndex(u => u.Email)
+            .IsUnique();
+        b.Entity<Seat>()
+            .HasIndex(s => new { s.ScreenId, s.Row, s.Number })
+            .IsUnique();
+        b.Entity<Show>()
+            .HasIndex(s => new { s.ScreenId, s.StartsAtUtc })
+            .IsUnique();
+        b.Entity<SeatLock>()
+            .HasIndex(sl => new { sl.ShowId, sl.SeatId })
+            .IsUnique();
+        b.Entity<BookingSeat>()
+            .HasIndex(bs => new { bs.BookingId, bs.SeatId })
+            .IsUnique();
     }
 
-}
 
-public class Movie
+}
+    public class Movie
 {
     public int Id { get; set; }
     public string Title { get; set; } = "";
@@ -149,7 +200,8 @@ public class Seat
     public string Row { get; set; } = "A";
     public int Number { get; set; } // 1..n
     public bool IsDisabled { get; set; }
-    public List<BookingSeat> BookingSeats { get; set; } = new(); // <-- Add this property
+    public List<BookingSeat> BookingSeats { get; set; } = new();
+    public List<SeatLock> SeatLocks { get; set; } = new(); // <-- Add this property to fix CS1061
 }
 
 public class Show
@@ -162,6 +214,8 @@ public class Show
     public DateTime StartsAtUtc { get; set; }
     public decimal Price { get; set; }
     public List<Booking> Bookings { get; set; } = new();
+    public List<SeatLock> SeatLocks { get; set; } = new();
+
 }
 
 public class Booking
@@ -169,10 +223,14 @@ public class Booking
     public int Id { get; set; }
     public int ShowId { get; set; }
     public Show Show { get; set; } = null!;
-    public string UserEmail { get; set; } = ""; // later: Identity UserId
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+
     public string Status { get; set; } = "Pending"; // Pending/Confirmed/Cancelled
     public decimal TotalAmount { get; set; }
-    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    //public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAtUtc { get; set; }
+
     public List<BookingSeat> BookingSeats { get; set; } = new();
 }
 
@@ -189,6 +247,8 @@ public class SeatLock
     public int Id { get; set; }
     public int ShowId { get; set; }
     public int SeatId { get; set; }
+    public Show Show { get; set; } = null!;
+    public Seat Seat { get; set; } = null!;
     public string LockedBy { get; set; } = ""; // user/email
     public DateTime ExpiresAtUtc { get; set; }
 }
@@ -207,6 +267,8 @@ public class User
 
     [Required]
     public string PasswordHash { get; set; } = string.Empty;
-    public string Role { get; set; } = "User"; // e.g., "User", "Admin"
+    public string Role { get; set; } = "User";
+
+    public List<Booking> Bookings { get; set; } = new();
 }
 // OtherInformation: Compare this snippet from Controllers/BookingsController.cs:

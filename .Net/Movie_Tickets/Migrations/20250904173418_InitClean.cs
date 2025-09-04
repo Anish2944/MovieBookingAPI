@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Movie_Tickets.Migrations
 {
     /// <inheritdoc />
-    public partial class SeedData : Migration
+    public partial class InitClean : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -33,22 +33,6 @@ namespace Movie_Tickets.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "SeatLocks",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    ShowId = table.Column<int>(type: "int", nullable: false),
-                    SeatId = table.Column<int>(type: "int", nullable: false),
-                    LockedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    ExpiresAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_SeatLocks", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Theaters",
                 columns: table => new
                 {
@@ -60,6 +44,22 @@ namespace Movie_Tickets.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Theaters", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Users",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    PasswordHash = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Role = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Users", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -90,7 +90,7 @@ namespace Movie_Tickets.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     ScreenId = table.Column<int>(type: "int", nullable: false),
-                    Row = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Row = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     Number = table.Column<int>(type: "int", nullable: false),
                     IsDisabled = table.Column<bool>(type: "bit", nullable: false)
                 },
@@ -140,10 +140,10 @@ namespace Movie_Tickets.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     ShowId = table.Column<int>(type: "int", nullable: false),
-                    UserEmail = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    UserId = table.Column<int>(type: "int", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(max)", nullable: false, defaultValue: "Pending"),
                     TotalAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETUTCDATE()")
                 },
                 constraints: table =>
                 {
@@ -153,7 +153,41 @@ namespace Movie_Tickets.Migrations
                         column: x => x.ShowId,
                         principalTable: "Shows",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Bookings_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SeatLocks",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ShowId = table.Column<int>(type: "int", nullable: false),
+                    SeatId = table.Column<int>(type: "int", nullable: false),
+                    LockedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ExpiresAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SeatLocks", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SeatLocks_Seats_SeatId",
+                        column: x => x.SeatId,
+                        principalTable: "Seats",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_SeatLocks_Shows_ShowId",
+                        column: x => x.ShowId,
+                        principalTable: "Shows",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -205,7 +239,7 @@ namespace Movie_Tickets.Migrations
                 values: new object[,]
                 {
                     { 1, false, 1, "A", 1 },
-                    { 2, false, 1, "A", 1 }
+                    { 2, false, 2, "A", 1 }
                 });
 
             migrationBuilder.InsertData(
@@ -214,13 +248,24 @@ namespace Movie_Tickets.Migrations
                 values: new object[,]
                 {
                     { 1, 1, 0m, 1, new DateTime(2025, 8, 30, 18, 0, 0, 0, DateTimeKind.Unspecified) },
-                    { 2, 2, 0m, 1, new DateTime(2025, 8, 30, 18, 0, 0, 0, DateTimeKind.Unspecified) }
+                    { 2, 2, 0m, 1, new DateTime(2025, 8, 30, 21, 0, 0, 0, DateTimeKind.Unspecified) }
                 });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Bookings_ShowId",
                 table: "Bookings",
                 column: "ShowId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Bookings_UserId",
+                table: "Bookings",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BookingSeats_BookingId_SeatId",
+                table: "BookingSeats",
+                columns: new[] { "BookingId", "SeatId" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_BookingSeats_SeatId",
@@ -233,15 +278,21 @@ namespace Movie_Tickets.Migrations
                 column: "TheaterId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_SeatLocks_SeatId",
+                table: "SeatLocks",
+                column: "SeatId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_SeatLocks_ShowId_SeatId",
                 table: "SeatLocks",
                 columns: new[] { "ShowId", "SeatId" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_Seats_ScreenId",
+                name: "IX_Seats_ScreenId_Row_Number",
                 table: "Seats",
-                column: "ScreenId");
+                columns: new[] { "ScreenId", "Row", "Number" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Shows_MovieId",
@@ -249,9 +300,16 @@ namespace Movie_Tickets.Migrations
                 column: "MovieId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Shows_ScreenId",
+                name: "IX_Shows_ScreenId_StartsAtUtc",
                 table: "Shows",
-                column: "ScreenId");
+                columns: new[] { "ScreenId", "StartsAtUtc" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_Email",
+                table: "Users",
+                column: "Email",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -271,6 +329,9 @@ namespace Movie_Tickets.Migrations
 
             migrationBuilder.DropTable(
                 name: "Shows");
+
+            migrationBuilder.DropTable(
+                name: "Users");
 
             migrationBuilder.DropTable(
                 name: "Movies");

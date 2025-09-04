@@ -89,7 +89,8 @@ public class TheatersController : ControllerBase
     }
 
     // POST /api/theaters/generate-seats
-    // Generates a tidy grid: A1..A{n}, B1..B{n}, etc.
+
+    // Controllers/TheatersController.cs (inside GenerateSeats)
     [HttpPost("generate-seats")]
     public async Task<ActionResult> GenerateSeats([FromBody] GenerateSeatsDto dto)
     {
@@ -97,25 +98,38 @@ public class TheatersController : ControllerBase
         if (screen is null) return NotFound($"Screen {dto.ScreenId} not found");
 
         var start = dto.StartRowAscii ?? 65; // 'A'
-        var seats = new List<Seat>();
+        var newSeats = new List<Seat>();
+
         for (int r = 0; r < dto.Rows; r++)
         {
             var rowLabel = ((char)(start + r)).ToString();
             for (int c = 1; c <= dto.SeatsPerRow; c++)
             {
-                seats.Add(new Seat
+                // skip if already exists (unique index enforces too)
+                bool exists = await _db.Seats.AnyAsync(x => x.ScreenId == screen.Id && x.Row == rowLabel && x.Number == c);
+                if (!exists)
                 {
-                    ScreenId = screen.Id,
-                    Row = rowLabel,
-                    Number = c,
-                    IsDisabled = false
-                });
+                    newSeats.Add(new Seat
+                    {
+                        ScreenId = screen.Id,
+                        Row = rowLabel,
+                        Number = c,
+                        IsDisabled = false
+                    });
+                }
             }
         }
 
-        _db.Seats.AddRange(seats);
-        screen.TotalSeats = await _db.Seats.CountAsync(s => s.ScreenId == screen.Id) + seats.Count;
+        if (newSeats.Count == 0)
+            return Ok(new { created = 0, message = "No new seats added (duplicates skipped)" });
+
+        await _db.Seats.AddRangeAsync(newSeats);
         await _db.SaveChangesAsync();
-        return Ok(new { created = seats.Count });
+
+        screen.TotalSeats = await _db.Seats.CountAsync(s => s.ScreenId == screen.Id);
+        await _db.SaveChangesAsync();
+
+        return Ok(new { created = newSeats.Count });
     }
+
 }
