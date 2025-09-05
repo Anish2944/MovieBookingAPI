@@ -82,32 +82,41 @@ public class MoviesController : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("upload")]
-    public async Task<IActionResult> Upload([FromForm] IFormFile file, [FromForm] int movieId)
+    public class MovieUploadDto
     {
-        if (file == null || file.Length == 0)
-            return BadRequest(new { message = "No file uploaded" });
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public int DurationMinutes { get; set; }
+        public IFormFile Poster { get; set; } = null!;
+    }
 
-        var movie = await _db.Movies.FindAsync(movieId);
-        if (movie == null)
-            return NotFound(new { message = "Movie not found" });
+    [HttpPost("upload")]
+    [Consumes("multipart/form-data")] // important for Swagger
+    public async Task<IActionResult> Upload([FromForm] MovieUploadDto dto)
+    {
+        if (dto.Poster == null || dto.Poster.Length == 0)
+            return BadRequest("No file uploaded");
 
-        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/images");
-        if (!Directory.Exists(uploadsFolder))
-            Directory.CreateDirectory(uploadsFolder);
-
-        var uniqueFileName = $"{Guid.NewGuid()}_{file.FileName}";
-        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+        var filePath = Path.Combine("uploads", dto.Poster.FileName);
 
         using (var stream = new FileStream(filePath, FileMode.Create))
         {
-            await file.CopyToAsync(stream);
+            await dto.Poster.CopyToAsync(stream);
         }
 
-        movie.ImageUrl = $"/images/{uniqueFileName}";
+        var movie = new Movie
+        {
+            Title = dto.Title,
+            Description = dto.Description,
+            DurationMinutes = dto.DurationMinutes,
+            ImageUrl = filePath
+        };
+
+        _db.Movies.Add(movie);
         await _db.SaveChangesAsync();
 
-        return Ok(new { message = "Image uploaded", imageUrl = movie.ImageUrl });
+        return CreatedAtAction(nameof(GetById), new { id = movie.Id }, movie);
     }
+
 
 }
