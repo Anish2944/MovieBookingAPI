@@ -1,6 +1,5 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
-
 name: Build and deploy ASP.Net Core app to Azure Web App - movieBookingAPI
 
 on:
@@ -13,7 +12,7 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read # required for checkout
 
     steps:
       - uses: actions/checkout@v4
@@ -23,11 +22,14 @@ jobs:
         with:
           dotnet-version: '9.x'
 
-      - name: Build with dotnet
-        run: dotnet build --configuration Release
+      - name: Restore dependencies
+        run: dotnet restore movieBookingAPI/.Net/Movie_Tickets/Movie_Tickets.csproj
 
-      - name: dotnet publish
-        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+      - name: Build with dotnet
+        run: dotnet build movieBookingAPI/.Net/Movie_Tickets/Movie_Tickets.csproj --configuration Release --no-restore
+
+      - name: Publish with dotnet
+        run: dotnet publish movieBookingAPI/.Net/Movie_Tickets/Movie_Tickets.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp" --no-build
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -39,15 +41,15 @@ jobs:
     runs-on: windows-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write # required for JWT
+      contents: read
 
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: .net-app
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -62,4 +64,5 @@ jobs:
           app-name: 'movieBookingAPI'
           slot-name: 'Production'
           package: .
+
           
