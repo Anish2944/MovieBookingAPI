@@ -1,5 +1,3 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
 name: Build and deploy ASP.Net Core app to Azure Web App - movieBookingAPI
 
 on:
@@ -23,13 +21,13 @@ jobs:
           dotnet-version: '9.x'
 
       - name: Restore dependencies
-        run: dotnet restore movieBookingAPI/.Net/Movie_Tickets/Movie_Tickets.csproj
+        run: dotnet restore ".Net/Movie_Tickets/Movie_Tickets.csproj"
 
       - name: Build with dotnet
-        run: dotnet build movieBookingAPI/.Net/Movie_Tickets/Movie_Tickets.csproj --configuration Release --no-restore
+        run: dotnet build ".Net/Movie_Tickets/Movie_Tickets.csproj" --configuration Release --no-restore
 
       - name: Publish with dotnet
-        run: dotnet publish movieBookingAPI/.Net/Movie_Tickets/Movie_Tickets.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp" --no-build
+        run: dotnet publish ".Net/Movie_Tickets/Movie_Tickets.csproj" -c Release -o "${{env.DOTNET_ROOT}}/myapp" --no-build
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -64,5 +62,3 @@ jobs:
           app-name: 'movieBookingAPI'
           slot-name: 'Production'
           package: .
-
-          
