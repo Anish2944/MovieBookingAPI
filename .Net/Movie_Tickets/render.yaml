@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: moviebookingapi
+    env: docker
+    plan: free
+    region: singapore
+    buildCommand: ""
+    startCommand: ""
+    dockerContext: .Net/Movie_Tickets
+    dockerfilePath: .Net/Movie_Tickets/Dockerfile
+    envVars:
+      - key: ConnectionStrings__DefaultConnection
+        value: Server=tcp:moviebooking.database.windows.net,1433;Initial Catalog=movieBooking;Persist Security Info=False;User ID=moviebooking;Password=.Net12345;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+      - key: Jwt__Key
+        value: superduperultramegasecretkeywithlotsofentropy!!
+      - key: Jwt__Issuer
+        value: YourApp
+      - key: Jwt__Audience
+        value: YourAppUsers
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production

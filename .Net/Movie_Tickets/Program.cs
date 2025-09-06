@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
+az appservice plan list -o table
 
 
 // Add EF Core with SQL Server
