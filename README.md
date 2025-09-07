@@ -82,21 +82,27 @@ Swagger UI:
 `https://localhost:[PORT]/swagger`
 
 ## 📚 API Endpoints
-Auth
 
+Auth
+```
 POST /api/auth/register → Register new user
 POST /api/auth/login → Login & receive JWT
+```
 
 Movies
+```
 GET /api/movies → List movies
 POST /api/movies → Add movie (Admin)
 PUT /api/movies/{id} → Update movie
 DELETE /api/movies/{id} → Delete movie
+```
 
 Bookings
+```
 POST /api/bookings → Create a booking
 GET /api/bookings/my → Get logged-in user’s bookings
 …and more (see Swagger for full list).
+```
 
 ## 🐳 Deployment (Render)
 
