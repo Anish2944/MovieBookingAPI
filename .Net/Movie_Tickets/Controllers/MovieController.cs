@@ -32,14 +32,32 @@ public class MoviesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateMovieDto dto)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Create([FromForm] CreateMovieDto dto)
     {
+        string? imageUrl = dto.ImageUrl;
+
+        if (dto.Poster != null && dto.Poster.Length > 0)
+        {
+            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+            if (!Directory.Exists(uploadsFolder))
+                Directory.CreateDirectory(uploadsFolder);
+
+            var fileName = Guid.NewGuid() + Path.GetExtension(dto.Poster.FileName);
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+                await dto.Poster.CopyToAsync(stream);
+
+            imageUrl = $"/uploads/{fileName}";
+        }
+
         var movie = new Movie
         {
             Title = dto.Title,
             Description = dto.Description,
             DurationMinutes = dto.DurationMinutes,
-            ImageUrl = dto.ImageUrl // ✅ can be provided directly, or later updated via upload API
+            ImageUrl = imageUrl
         };
 
         _db.Movies.Add(movie);
@@ -50,19 +68,34 @@ public class MoviesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, UpdateMovieDto dto)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Update(int id, [FromForm] UpdateMovieDto dto)
     {
-        if (id != dto.Id)
-            return BadRequest(new { message = "ID mismatch" });
-
         var movie = await _db.Movies.FindAsync(id);
-        if (movie is null)
-            return NotFound(new { message = "Movie not found" });
+        if (movie is null) return NotFound(new { message = "Movie not found" });
 
         movie.Title = dto.Title;
         movie.Description = dto.Description;
         movie.DurationMinutes = dto.DurationMinutes;
-        movie.ImageUrl = dto.ImageUrl; // ✅ update image URL
+
+        if (dto.Poster != null && dto.Poster.Length > 0)
+        {
+            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+            if (!Directory.Exists(uploadsFolder))
+                Directory.CreateDirectory(uploadsFolder);
+
+            var fileName = Guid.NewGuid() + Path.GetExtension(dto.Poster.FileName);
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+                await dto.Poster.CopyToAsync(stream);
+
+            movie.ImageUrl = $"/uploads/{fileName}";
+        }
+        else if (!string.IsNullOrEmpty(dto.ImageUrl))
+        {
+            movie.ImageUrl = dto.ImageUrl;
+        }
 
         await _db.SaveChangesAsync();
 
@@ -81,42 +114,4 @@ public class MoviesController : ControllerBase
         await _db.SaveChangesAsync();
         return NoContent();
     }
-
-    public class MovieUploadDto
-    {
-        public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public int DurationMinutes { get; set; }
-        public IFormFile Poster { get; set; } = null!;
-    }
-
-    [HttpPost("upload")]
-    [Consumes("multipart/form-data")] // important for Swagger
-    public async Task<IActionResult> Upload([FromForm] MovieUploadDto dto)
-    {
-        if (dto.Poster == null || dto.Poster.Length == 0)
-            return BadRequest("No file uploaded");
-
-        var filePath = Path.Combine("uploads", dto.Poster.FileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await dto.Poster.CopyToAsync(stream);
-        }
-
-        var movie = new Movie
-        {
-            Title = dto.Title,
-            Description = dto.Description,
-            DurationMinutes = dto.DurationMinutes,
-            ImageUrl = filePath
-        };
-
-        _db.Movies.Add(movie);
-        await _db.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetById), new { id = movie.Id }, movie);
-    }
-
-
 }
