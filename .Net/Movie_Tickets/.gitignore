@@ -45,7 +45,9 @@
 *.mdf
 *.ldf
 *.publishsettings
-
+CERTIFICATE_IKIGAI.jpg
+.vs
+JAVA
 # NuGet
 packages/
 *.nupkg
