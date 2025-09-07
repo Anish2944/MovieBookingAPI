@@ -28,6 +28,8 @@ Swagger UI is available for interactive API documentation.
 - **SQL Server (Azure SQL / Local DB)**
 - **JWT Bearer Authentication**
 - Deployment: **Render (Docker)**
+
+## 📦 Project Structure
 ```
 MovieBookingAPI/
 ├── Controllers/ # API controllers
@@ -64,15 +66,19 @@ Create a appsettings.Development.json (or use dotnet user-secrets) with:
 }
 ```
 ###3️⃣ Run Database Migrations
+
 `dotnet ef database update`
 
 ###4️⃣ Run the API
+
 `dotnet run`
 
 API will be available at:
+
 `https://localhost:5001`
 
 Swagger UI:
+
 `https://localhost:[PORT]/swagger`
 
 📚 API Endpoints
@@ -92,6 +98,13 @@ POST /api/bookings → Create a booking
 GET /api/bookings/my → Get logged-in user’s bookings
 …and more (see Swagger for full list).
 
+🐳 Deployment (Render)
 
+This project uses Docker & render.yaml.
+Render builds and runs the container automatically.
 
-## 📦 Project Structure
+🤝 Contributing
+
+Pull requests are welcome!
+For major changes, please open an issue first to discuss what you’d like to change.
+
