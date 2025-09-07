@@ -28,7 +28,7 @@ Swagger UI is available for interactive API documentation.
 - **SQL Server (Azure SQL / Local DB)**
 - **JWT Bearer Authentication**
 - Deployment: **Render (Docker)**
-
+```
 MovieBookingAPI/
 ├── Controllers/ # API controllers
 ├── Models/ # Entity models
@@ -37,6 +37,7 @@ MovieBookingAPI/
 ├── Program.cs # App entry point
 ├── Dockerfile # For Render deployment
 └── render.yaml # Render service definition
+```
 ---
 
 
