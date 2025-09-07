@@ -45,13 +45,13 @@ MovieBookingAPI/
 
 ## 🚀 Getting Started (Local Development)
 
-# 1️⃣ Clone the repository
+### 1️⃣ Clone the repository
 ```bash
 git clone https://github.com/Anish2944/movieBookingAPI.git
 cd movieBookingAPI
 ```
 ---
-# 2️⃣ Configure Environment Variables
+### 2️⃣ Configure Environment Variables
 Create a appsettings.Development.json (or use dotnet user-secrets) with:
 ```
 {
@@ -65,11 +65,11 @@ Create a appsettings.Development.json (or use dotnet user-secrets) with:
   }
 }
 ```
-# 3️⃣ Run Database Migrations
+### 3️⃣ Run Database Migrations
 
 `dotnet ef database update`
 
-# 4️⃣ Run the API
+### 4️⃣ Run the API
 
 `dotnet run`
 
