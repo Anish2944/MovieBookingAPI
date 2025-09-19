@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Movie_Tickets.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -14,6 +14,16 @@ if (string.IsNullOrEmpty(jwtKey))
 {
     throw new InvalidOperationException("JWT Key is not configured. Please set 'Jwt:Key' in your configuration.");
 }
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAngularApp",
+        policy => policy
+            .WithOrigins("http://localhost:4200")  // 👈 allow Angular dev server
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+    );
+});
 
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer(options =>
@@ -71,6 +81,7 @@ app.UseSwaggerUI(c =>
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseCors("AllowAngularApp");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
@@ -80,5 +91,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 }
+
+System.Diagnostics.Debug.WriteLine("Connection string: " + builder.Configuration.GetConnectionString("DefaultConnection"));
 
 app.Run();
