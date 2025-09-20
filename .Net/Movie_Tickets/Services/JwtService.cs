@@ -8,11 +8,13 @@ public class JwtService
 {
     private readonly string _secret;
     private readonly string _issuer;
+    private readonly string _audience;
 
     public JwtService(IConfiguration config)
     {
-        _secret = config["Jwt:Key"]!;
-        _issuer = config["Jwt:Issuer"]!;
+        _secret = config["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key is not configured");
+        _issuer = config["Jwt:Issuer"] ?? throw new InvalidOperationException("JWT Issuer is not configured");
+        _audience = config["Jwt:Audience"] ?? throw new InvalidOperationException("JWT Audience is not configured");
     }
 
     public string GenerateToken(User user)
@@ -25,7 +27,7 @@ public class JwtService
 
         var token = new JwtSecurityToken(
             issuer: _issuer,
-            audience: null, // You may want to add an _audience field if needed
+            audience: _audience,
             claims: new[]
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),

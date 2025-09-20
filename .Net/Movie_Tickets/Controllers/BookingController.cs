@@ -1,45 +1,113 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Movie_Tickets.Data;
 using Movie_Tickets.Common;
+using Movie_Tickets.Data;
 
-namespace MovieBooking.Api.Controllers;
+namespace Movie_Tickets.Controllers;
 
 [ApiController]
 [Route("api/bookings")]
+[Authorize]
 public class BookingsController : ControllerBase
 {
+    private const string ConfirmedStatus = "Confirmed";
     private readonly AppDbContext _db;
+
     public BookingsController(AppDbContext db) => _db = db;
 
-    public record LockSeatsRequest(int ShowId, int[] SeatIds, string UserEmail);
-    public record ConfirmRequest(int ShowId, int[] SeatIds, string UserEmail);
+    public record SeatSelectionRequest(int ShowId, int[] SeatIds);
 
     [HttpPost("lock")]
-    public async Task<IActionResult> LockSeats(LockSeatsRequest req)
+    public async Task<IActionResult> LockSeats([FromBody] SeatSelectionRequest req)
     {
-        // Validate show & screen
-        var show = await _db.Shows.AsNoTracking().FirstOrDefaultAsync(s => s.Id == req.ShowId);
-        if (show is null) return NotFound(new ApiResponse<object>(false, null, "Show not found"));
+        var email = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Unauthorized(new ApiResponse<object>(false, null, "Not logged in"));
+        }
 
-        // Ensure all seats belong to the show's screen
-        var validSeatIds = await _db.Seats.Where(se => se.ScreenId == show.ScreenId && req.SeatIds.Contains(se.Id))
-                                          .Select(se => se.Id).ToListAsync();
-        if (validSeatIds.Count != req.SeatIds.Distinct().Count())
+        if (req is null || req.SeatIds is null || req.SeatIds.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Seat selection is required"));
+        }
+
+        var seatIds = req.SeatIds.Where(id => id > 0).Distinct().ToArray();
+        if (seatIds.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Seat selection is required"));
+        }
+
+        var show = await _db.Shows.AsNoTracking().FirstOrDefaultAsync(s => s.Id == req.ShowId);
+        if (show is null)
+        {
+            return NotFound(new ApiResponse<object>(false, null, "Show not found"));
+        }
+
+        var validSeatIds = await _db.Seats
+            .Where(se => se.ScreenId == show.ScreenId && seatIds.Contains(se.Id))
+            .Select(se => se.Id)
+            .ToListAsync();
+
+        if (validSeatIds.Count != seatIds.Length)
+        {
             return BadRequest(new ApiResponse<object>(false, null, "Some seats are invalid for this show"));
+        }
 
         var now = DateTime.UtcNow;
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+
+        var bookedSeatIds = await _db.BookingSeats
+            .Where(bs => seatIds.Contains(bs.SeatId) && bs.Booking.ShowId == req.ShowId && bs.Booking.Status == ConfirmedStatus)
+            .Select(bs => bs.SeatId)
+            .ToListAsync();
+
+        if (bookedSeatIds.Count > 0)
+        {
+            return Conflict(new ApiResponse<object>(false, null, $"Seats already booked: {string.Join(", ", bookedSeatIds)}"));
+        }
+
+        var existingLocks = await _db.SeatLocks
+            .Where(l => l.ShowId == req.ShowId && seatIds.Contains(l.SeatId))
+            .ToListAsync();
+
+        var expiredLocks = existingLocks.Where(l => l.ExpiresAtUtc <= now).ToList();
+        if (expiredLocks.Count > 0)
+        {
+            _db.SeatLocks.RemoveRange(expiredLocks);
+        }
+
+        var activeLocks = existingLocks.Where(l => l.ExpiresAtUtc > now).ToList();
+        var conflictingLocks = activeLocks
+            .Where(l => !string.Equals(l.LockedBy, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+            .Select(l => l.SeatId)
+            .Distinct()
+            .ToList();
+
+        if (conflictingLocks.Count > 0)
+        {
+            return Conflict(new ApiResponse<object>(false, null, $"Seats already locked: {string.Join(", ", conflictingLocks)}"));
+        }
+
         var expires = now.AddMinutes(5);
 
-        foreach (var seatId in req.SeatIds.Distinct())
+        foreach (var lockEntry in activeLocks.Where(l => string.Equals(l.LockedBy, normalizedEmail, StringComparison.OrdinalIgnoreCase)))
         {
-            _db.SeatLocks.Add(new SeatLock
+            lockEntry.ExpiresAtUtc = expires;
+        }
+
+        var seatsToLock = seatIds.Except(activeLocks.Select(l => l.SeatId)).ToList();
+        if (seatsToLock.Count > 0)
+        {
+            var newLocks = seatsToLock.Select(seatId => new SeatLock
             {
                 ShowId = req.ShowId,
                 SeatId = seatId,
-                LockedBy = req.UserEmail, // or use User.GetEmail() if you enforce auth here
+                LockedBy = normalizedEmail,
                 ExpiresAtUtc = expires
             });
+
+            await _db.SeatLocks.AddRangeAsync(newLocks);
         }
 
         try
@@ -49,83 +117,124 @@ public class BookingsController : ControllerBase
         }
         catch (DbUpdateException)
         {
-            return Conflict(new ApiResponse<object>(false, null, "Some seats already locked"));
+            return Conflict(new ApiResponse<object>(false, null, "Some seats are already locked"));
         }
     }
 
     [HttpPost("confirm")]
-    public async Task<IActionResult> Confirm(ConfirmRequest req)
+    public async Task<IActionResult> Confirm([FromBody] SeatSelectionRequest req)
     {
-        // (Optionally) pull user email from JWT, not body
-        var jwtEmail = User.GetEmail();
-        if (string.IsNullOrEmpty(jwtEmail) || !string.Equals(jwtEmail, req.UserEmail, StringComparison.OrdinalIgnoreCase))
-            return Unauthorized(new ApiResponse<object>(false, null, "User mismatch"));
+        var email = User.GetEmail();
+        var userId = User.GetUserId();
 
-        using var tx = await _db.Database.BeginTransactionAsync();
+        if (string.IsNullOrWhiteSpace(email) || userId is null)
+        {
+            return Unauthorized(new ApiResponse<object>(false, null, "Not logged in"));
+        }
+
+        if (req is null || req.SeatIds is null || req.SeatIds.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Seat selection is required"));
+        }
+
+        var seatIds = req.SeatIds.Where(id => id > 0).Distinct().ToArray();
+        if (seatIds.Length == 0)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Seat selection is required"));
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
         var now = DateTime.UtcNow;
 
-        // Validate locks are held by this user and not expired
-        var locks = await _db.SeatLocks
-            .Where(l => l.ShowId == req.ShowId && req.SeatIds.Contains(l.SeatId) &&
-                        l.ExpiresAtUtc > now && l.LockedBy == req.UserEmail)
-            .ToListAsync();
+        await using var tx = await _db.Database.BeginTransactionAsync();
 
-        if (locks.Count != req.SeatIds.Distinct().Count())
-            return Conflict(new ApiResponse<object>(false, null, "Missing or expired locks"));
+        try
+        {
+            var locks = await _db.SeatLocks
+                .Where(l => l.ShowId == req.ShowId && seatIds.Contains(l.SeatId))
+                .ToListAsync();
 
-        // Ensure not already booked
-        var alreadyBooked = await _db.BookingSeats.AnyAsync(bs =>
-            req.SeatIds.Contains(bs.SeatId) &&
-            _db.Bookings.Any(b => b.Id == bs.BookingId && b.ShowId == req.ShowId && b.Status == "Confirmed"));
+            var validLocks = locks
+                .Where(l => l.ExpiresAtUtc > now && string.Equals(l.LockedBy, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-        if (alreadyBooked)
-            return Conflict(new ApiResponse<object>(false, null, "Some seats already booked"));
+            if (validLocks.Count != seatIds.Length)
+            {
+                return Conflict(new ApiResponse<object>(false, null, "Missing or expired locks"));
+            }
 
-        var show = await _db.Shows.FindAsync(req.ShowId);
-        if (show is null) return NotFound(new ApiResponse<object>(false, null, "Show not found"));
+            var bookedSeatIds = await _db.BookingSeats
+                .Where(bs => seatIds.Contains(bs.SeatId) && bs.Booking.ShowId == req.ShowId && bs.Booking.Status == ConfirmedStatus)
+                .Select(bs => bs.SeatId)
+                .ToListAsync();
 
-        var total = show.Price * req.SeatIds.Distinct().Count();
+            if (bookedSeatIds.Count > 0)
+            {
+                return Conflict(new ApiResponse<object>(false, null, $"Seats already booked: {string.Join(", ", bookedSeatIds)}"));
+            }
 
-        // TODO: integrate payment → only mark Confirmed after payment success
-        var userId = await _db.Users.Where(u => u.Email == req.UserEmail).Select(u => u.Id).FirstOrDefaultAsync();
-        var booking = new Booking { ShowId = req.ShowId, UserId = userId, Status = "Confirmed", TotalAmount = total };
-        _db.Bookings.Add(booking);
-        await _db.SaveChangesAsync();
+            var show = await _db.Shows.AsNoTracking().FirstOrDefaultAsync(s => s.Id == req.ShowId);
+            if (show is null)
+            {
+                return NotFound(new ApiResponse<object>(false, null, "Show not found"));
+            }
 
-        foreach (var seatId in req.SeatIds.Distinct())
-            _db.BookingSeats.Add(new BookingSeat { BookingId = booking.Id, SeatId = seatId });
+            var booking = new Booking
+            {
+                ShowId = req.ShowId,
+                UserId = userId.Value,
+                Status = ConfirmedStatus,
+                TotalAmount = show.Price * seatIds.Length,
+                CreatedAtUtc = DateTime.UtcNow
+            };
 
-        _db.SeatLocks.RemoveRange(locks);
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
+            _db.Bookings.Add(booking);
 
-        return Ok(new ApiResponse<object>(true, new { bookingId = booking.Id, total }));
+            foreach (var seatId in seatIds)
+            {
+                _db.BookingSeats.Add(new BookingSeat { Booking = booking, SeatId = seatId });
+            }
+
+            _db.SeatLocks.RemoveRange(validLocks);
+
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            return Ok(new ApiResponse<object>(true, new { bookingId = booking.Id, total = booking.TotalAmount }));
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            throw;
+        }
     }
 
     [HttpPost("release-expired-locks")]
+    [AllowAnonymous]
     public async Task<IActionResult> Cleanup()
     {
         var now = DateTime.UtcNow;
         var expired = await _db.SeatLocks.Where(l => l.ExpiresAtUtc <= now).ToListAsync();
-        if (expired.Any())
+        if (expired.Count > 0)
         {
             _db.SeatLocks.RemoveRange(expired);
             await _db.SaveChangesAsync();
         }
-        return Ok(new { removed = expired.Count });
+
+        return Ok(new ApiResponse<object>(true, new { removed = expired.Count }));
     }
 
     [HttpGet("my")]
     public async Task<IActionResult> MyBookings()
     {
-        var email = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(email))
+        var userId = User.GetUserId();
+        if (userId is null)
+        {
             return Unauthorized(new ApiResponse<object>(false, null, "Not logged in"));
-
-        var userId = await _db.Users.Where(u => u.Email == email).Select(u => u.Id).FirstOrDefaultAsync();
+        }
 
         var bookings = await _db.Bookings
-            .Where(b => b.UserId == userId)
+            .Where(b => b.UserId == userId.Value)
             .Include(b => b.Show).ThenInclude(s => s.Movie)
             .Include(b => b.Show).ThenInclude(s => s.Screen)
             .Include(b => b.BookingSeats).ThenInclude(bs => bs.Seat)
@@ -147,16 +256,28 @@ public class BookingsController : ControllerBase
         return Ok(new ApiResponse<object>(true, result));
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:int}")]
     public async Task<IActionResult> GetBooking(int id)
     {
+        var userId = User.GetUserId();
+        if (userId is null)
+        {
+            return Unauthorized(new ApiResponse<object>(false, null, "Not logged in"));
+        }
+
         var booking = await _db.Bookings
-            .Where(b => b.Id == id)
+            .Where(b => b.Id == id && b.UserId == userId.Value)
             .Include(b => b.Show).ThenInclude(s => s.Movie)
             .Include(b => b.Show).ThenInclude(s => s.Screen)
             .Include(b => b.BookingSeats).ThenInclude(bs => bs.Seat)
+            .AsNoTracking()
             .FirstOrDefaultAsync();
-        if (booking is null) return NotFound(new { message = "booking not found" });
+
+        if (booking is null)
+        {
+            return NotFound(new ApiResponse<object>(false, null, "Booking not found"));
+        }
+
         var result = new
         {
             booking.Id,
@@ -167,6 +288,7 @@ public class BookingsController : ControllerBase
             booking.TotalAmount,
             Seats = booking.BookingSeats.Select(bs => new { bs.Seat.Row, bs.Seat.Number })
         };
-        return Ok(result);
+
+        return Ok(new ApiResponse<object>(true, result));
     }
 }
