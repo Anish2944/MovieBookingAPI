@@ -7,7 +7,6 @@ public record MovieDto(int Id, string Title, string Description, int DurationMin
 
 public class CreateMovieDto
 {
-    public int Id { get; set; }
     [Required, MinLength(1)] public string Title { get; set; } = "";
     [Required, MinLength(1)] public string Description { get; set; } = "";
     [Range(1, 1000)] public int DurationMinutes { get; set; }

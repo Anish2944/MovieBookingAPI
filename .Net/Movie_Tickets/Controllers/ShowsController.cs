@@ -10,6 +10,7 @@ namespace Movie_Tickets.Controllers;
 [Route("api/[controller]")]
 public class ShowsController : ControllerBase
 {
+    private const string ConfirmedStatus = "Confirmed";
     private readonly AppDbContext _db;
     public ShowsController(AppDbContext db) => _db = db;
 
@@ -79,17 +80,57 @@ public class ShowsController : ControllerBase
     [HttpPut("{showId:int}")]
     public async Task<IActionResult> Update(int showId, [FromBody] CreateShowDto dto)
     {
-        if (showId <= 0) return BadRequest("Invalid show ID");
+        if (showId <= 0)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Invalid show ID"));
+        }
+
+        if (dto.Price < 0)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Price cannot be negative"));
+        }
+
         var show = await _db.Shows.FindAsync(showId);
-        if (show is null) return NotFound($"Show {showId} not found");
-        var movieExists = await _db.Movies.AnyAsync(m => m.Id == dto.MovieId);
-        if (!movieExists) return NotFound($"Movie {dto.MovieId} not found");
+        if (show is null)
+        {
+            return NotFound(new ApiResponse<object>(false, null, $"Show {showId} not found"));
+        }
+
+        var movie = await _db.Movies.AsNoTracking().FirstOrDefaultAsync(m => m.Id == dto.MovieId);
+        if (movie is null)
+        {
+            return NotFound(new ApiResponse<object>(false, null, $"Movie {dto.MovieId} not found"));
+        }
+
         var screenExists = await _db.Screens.AnyAsync(s => s.Id == dto.ScreenId);
-        if (!screenExists) return NotFound($"Screen {dto.ScreenId} not found");
+        if (!screenExists)
+        {
+            return NotFound(new ApiResponse<object>(false, null, $"Screen {dto.ScreenId} not found"));
+        }
+
+        if (dto.StartsAtUtc <= DateTime.UtcNow)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Start time must be in the future"));
+        }
+
+        var showStart = DateTime.SpecifyKind(dto.StartsAtUtc, DateTimeKind.Utc);
+        var showEnd = showStart.AddMinutes(movie.DurationMinutes);
+
+        var overlap = await _db.Shows
+            .Where(s => s.ScreenId == dto.ScreenId && s.Id != showId)
+            .Join(_db.Movies, s => s.MovieId, m => m.Id, (s, m) => new { s.StartsAtUtc, Duration = m.DurationMinutes })
+            .AnyAsync(x => ShowTimeHelper.Overlaps(showStart, showEnd, x.StartsAtUtc, x.StartsAtUtc.AddMinutes(x.Duration)));
+
+        if (overlap)
+        {
+            return Conflict(new ApiResponse<object>(false, null, "Overlapping show on this screen"));
+        }
+
         show.MovieId = dto.MovieId;
         show.ScreenId = dto.ScreenId;
-        show.StartsAtUtc = DateTime.SpecifyKind(dto.StartsAtUtc, DateTimeKind.Utc);
+        show.StartsAtUtc = showStart;
         show.Price = dto.Price;
+
         await _db.SaveChangesAsync();
         return NoContent();
     }
@@ -125,26 +166,46 @@ public class ShowsController : ControllerBase
     [HttpGet("{showId:int}/seats")]
     public async Task<IActionResult> Seats(int showId)
     {
-        var screenId = await _db.Shows
+        var show = await _db.Shows
+            .AsNoTracking()
             .Where(s => s.Id == showId)
-            .Select(s => s.ScreenId)
+            .Select(s => new { s.Id, s.ScreenId })
             .FirstOrDefaultAsync();
 
-        if (screenId == default)
-            return NotFound($"Show {showId} not found");
+        if (show is null)
+        {
+            return NotFound(new ApiResponse<object>(false, null, $"Show {showId} not found"));
+        }
 
         var seats = await _db.Seats
-            .Where(seat => seat.ScreenId == screenId)
-            .Select(seat => new {
-                seat.Id,
-                seat.Row,
-                seat.Number,
-                IsBooked = _db.BookingSeats.Any(bs => bs.SeatId == seat.Id &&
-                    _db.Bookings.Any(b => b.Id == bs.BookingId && b.ShowId == showId && b.Status == "Confirmed")),
-                IsLocked = _db.SeatLocks.Any(l => l.SeatId == seat.Id && l.ShowId == showId && l.ExpiresAtUtc > DateTime.UtcNow)
-            })
+            .Where(seat => seat.ScreenId == show.ScreenId)
+            .OrderBy(seat => seat.Row)
+            .ThenBy(seat => seat.Number)
+            .Select(seat => new { seat.Id, seat.Row, seat.Number })
             .ToListAsync();
 
-        return Ok(seats);
+        var confirmedSeatIds = await _db.BookingSeats
+            .Where(bs => bs.Booking.ShowId == showId && bs.Booking.Status == ConfirmedStatus)
+            .Select(bs => bs.SeatId)
+            .ToListAsync();
+
+        var lockedSeatIds = await _db.SeatLocks
+            .Where(l => l.ShowId == showId && l.ExpiresAtUtc > DateTime.UtcNow)
+            .Select(l => l.SeatId)
+            .ToListAsync();
+
+        var confirmed = new HashSet<int>(confirmedSeatIds);
+        var locked = new HashSet<int>(lockedSeatIds);
+
+        var response = seats.Select(seat => new
+        {
+            seat.Id,
+            seat.Row,
+            seat.Number,
+            IsBooked = confirmed.Contains(seat.Id),
+            IsLocked = locked.Contains(seat.Id)
+        });
+
+        return Ok(response);
     }
 }
