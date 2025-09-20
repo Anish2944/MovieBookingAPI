@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Reflection.Emit;
 
 namespace Movie_Tickets.Data;
 
@@ -271,5 +270,4 @@ public class User
     public string Role { get; set; } = "User";
 
     public List<Booking> Bookings { get; set; } = new();
-}
-// OtherInformation: Compare this snippet from Controllers/BookingsController.cs:
+  }
