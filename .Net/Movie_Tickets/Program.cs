@@ -32,7 +32,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngularApp",
         policy => policy
-            .WithOrigins("http://localhost:4200")  // 👈 allow Angular dev server
+            .WithOrigins("http://localhost:4200","https://movie-booking-six-rust.vercel.app/") 
             .AllowAnyHeader()
             .AllowAnyMethod()
     );
