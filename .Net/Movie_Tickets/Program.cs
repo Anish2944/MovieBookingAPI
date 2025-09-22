@@ -35,6 +35,8 @@ builder.Services.AddCors(options =>
             .WithOrigins("http://localhost:4200","https://movie-booking-six-rust.vercel.app") 
             .AllowAnyHeader()
             .AllowAnyMethod()
+            .AllowCredentials()
+            .SetIsOriginAllowedToAllowWildcardSubdomains()
     );
 });
 
@@ -56,7 +58,8 @@ builder.Services
             ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             RoleClaimType = ClaimTypes.Role,
-            NameClaimType = ClaimTypes.Name
+            NameClaimType = ClaimTypes.Name,
+            ClockSkew = TimeSpan.Zero
         };
     });
 
