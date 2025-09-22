@@ -36,7 +36,7 @@ public class ShowsController : ControllerBase
         var overlap = await _db.Shows
             .Where(s => s.ScreenId == dto.ScreenId)
             .Join(_db.Movies, s => s.MovieId, m => m.Id, (s, m) => new { s.StartsAtUtc, Duration = m.DurationMinutes })
-            .AnyAsync(x => ShowTimeHelper.Overlaps(showStart, showEnd, x.StartsAtUtc, x.StartsAtUtc.AddMinutes(x.Duration)));
+            .AnyAsync(x => showStart < x.StartsAtUtc.AddMinutes(x.Duration) && x.StartsAtUtc < showEnd);
 
         if (overlap)
             return Conflict(new ApiResponse<object>(false, null, "Overlapping show on this screen"));
@@ -56,26 +56,50 @@ public class ShowsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<Show>>> GetAll()
+    public async Task<ActionResult<List<object>>> GetAll()
     {
         var shows = await _db.Shows
-            .Include(s => s.Movie)
-            .Include(s => s.Screen).ThenInclude(sc => sc.Theater)
+            .Select(s => new {
+                s.Id,
+                StartsAtUtc = s.StartsAtUtc,
+                s.Price,
+                Movie = new { s.Movie.Id, s.Movie.Title, s.Movie.DurationMinutes },
+                Screen = new
+                {
+                    s.Screen.Id,
+                    s.Screen.Name,
+                    Theater = new { s.Screen.Theater.Id, s.Screen.Theater.Name }
+                }
+            })
             .ToListAsync();
+
         return Ok(shows);
     }
 
+
     // GET /api/shows/{showId}
     [HttpGet("{showId:int}")]
-    public async Task<ActionResult<Show>> GetById(int showId)
+    public async Task<IActionResult> GetById(int showId)
     {
         var show = await _db.Shows
-            .Include(s => s.Movie)
-            .Include(s => s.Screen).ThenInclude(sc => sc.Theater)
-            .FirstOrDefaultAsync(s => s.Id == showId);
+            .Where(s => s.Id == showId)
+            .Select(s => new {
+                s.Id,
+                StartsAtUtc = s.StartsAtUtc,
+                s.Price,
+                Movie = new { s.Movie.Id, s.Movie.Title, s.Movie.DurationMinutes },
+                Screen = new
+                {
+                    s.Screen.Id,
+                    s.Screen.Name,
+                    Theater = new { s.Screen.Theater.Id, s.Screen.Theater.Name }
+                }
+            })
+            .FirstOrDefaultAsync();
 
         return show is null ? NotFound() : Ok(show);
     }
+
 
     [HttpPut("{showId:int}")]
     public async Task<IActionResult> Update(int showId, [FromBody] CreateShowDto dto)

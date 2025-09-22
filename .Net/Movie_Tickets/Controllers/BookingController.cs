@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Movie_Tickets.Common;
@@ -18,9 +18,10 @@ public class BookingsController : ControllerBase
 
     public record SeatSelectionRequest(int ShowId, int[] SeatIds);
 
-    [HttpPost("lock")]
+    [HttpPost("lock")] 
     public async Task<IActionResult> LockSeats([FromBody] SeatSelectionRequest req)
     {
+  
         var email = User.GetEmail();
         if (string.IsNullOrWhiteSpace(email))
         {

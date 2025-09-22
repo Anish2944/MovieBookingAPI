@@ -27,9 +27,19 @@ public class TheatersController : ControllerBase
     public async Task<ActionResult<Theater>> GetTheater(int id)
     {
         var t = await _db.Theaters
-            .Include(x => x.Screens)
-            .ThenInclude(s => s.Seats)
-            .FirstOrDefaultAsync(x => x.Id == id);
+        .Where(x => x.Id == id)
+        .Select(t => new {
+            t.Id,
+            t.Name,
+            t.Location,
+            Screens = t.Screens.Select(s => new {
+                s.Id,
+                s.Name,
+                s.TotalSeats
+            })
+        })
+        .FirstOrDefaultAsync();
+
         return t is null ? NotFound() : Ok(t);
     }
 
@@ -56,8 +66,23 @@ public class TheatersController : ControllerBase
 
     // GET /api/theaters
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Theater>>> List()
-        => Ok(await _db.Theaters.AsNoTracking().ToListAsync());
+    public async Task<ActionResult> List()
+    {
+        var theaters = await _db.Theaters
+            .AsNoTracking()
+            .Select(t => new {
+                t.Id,
+                t.Name,
+                t.Location,
+                Screens = t.Screens
+                    .OrderBy(s => s.Name)
+                    .Select(s => new { s.Id, s.Name, s.TotalSeats })
+            })
+            .ToListAsync();
+
+        return Ok(theaters);
+    }
+
 
     // POST /api/theaters/screen
     [HttpPost("screen")]
