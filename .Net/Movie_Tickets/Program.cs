@@ -34,9 +34,11 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngularApp",
         policy => policy
-            .WithOrigins("http://localhost:4200")  // 👈 allow Angular dev server
+            .WithOrigins("http://localhost:4200","https://movie-booking-six-rust.vercel.app") 
             .AllowAnyHeader()
             .AllowAnyMethod()
+            .AllowCredentials()
+            .SetIsOriginAllowedToAllowWildcardSubdomains()
     );
 });
 
@@ -69,7 +71,8 @@ builder.Services
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             RoleClaimType = ClaimTypes.Role,
-            NameClaimType = ClaimTypes.Name
+            NameClaimType = ClaimTypes.Name,
+            ClockSkew = TimeSpan.Zero
         };
     });
 
