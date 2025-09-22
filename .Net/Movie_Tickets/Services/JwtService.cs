@@ -19,10 +19,7 @@ public class JwtService
 
     public string GenerateToken(User user)
     {
-        var key = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(_secret)
-        );
-
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
@@ -30,15 +27,24 @@ public class JwtService
             audience: _audience,
             claims: new[]
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-                new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                new Claim(ClaimTypes.Role, user.Role ?? ""),
-                new Claim(ClaimTypes.Name, user.Name ?? "")
+            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(JwtRegisteredClaimNames.Email, user.Email),
+            new Claim(ClaimTypes.Email, user.Email),
+            new Claim(ClaimTypes.Role, user.Role ?? ""),
+            new Claim(ClaimTypes.Name, user.Name ?? "")
             },
             expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: creds
         );
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        var jwt = new JwtSecurityTokenHandler().WriteToken(token);
+
+        // 👇 Debug logging
+        Console.WriteLine("Generated JWT Payload:");
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(token.Payload));
+
+        return jwt;
     }
+
 }

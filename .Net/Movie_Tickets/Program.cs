@@ -34,13 +34,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngularApp",
         policy => policy
-            .WithOrigins("http://localhost:4200","https://movie-booking-six-rust.vercel.app") 
+            .SetIsOriginAllowed(origin =>
+            {
+                var host = new Uri(origin).Host;
+                return host == "localhost" || host.EndsWith("vercel.app");
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()
-            .SetIsOriginAllowedToAllowWildcardSubdomains()
     );
 });
+
 
 // --- Authentication ---
 builder.Services
@@ -69,6 +73,8 @@ builder.Services
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             RoleClaimType = ClaimTypes.Role,
             NameClaimType = ClaimTypes.Name,
@@ -126,12 +132,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-//using (var scope = app.Services.CreateScope())
-//{
-//    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-//    db.Database.Migrate();
-//}
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
-//System.Diagnostics.Debug.WriteLine("Connection string: " + builder.Configuration.GetConnectionString("DefaultConnection"));
+System.Diagnostics.Debug.WriteLine("Connection string: " + builder.Configuration.GetConnectionString("DefaultConnection"));
 
 app.Run();
